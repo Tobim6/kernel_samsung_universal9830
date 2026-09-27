@@ -21,14 +21,22 @@
 #include <openssl/bio.h>
 #include <openssl/pem.h>
 #include <openssl/err.h>
-#include <openssl/engine.h>
+#include <openssl/opensslv.h>
 
 /*
- * OpenSSL 3.0 deprecates the OpenSSL's ENGINE API.
- *
- * Remove this if/when that API is no longer used
+ * OpenSSL 3.0 deprecates the ENGINE API, and newer host OpenSSL builds
+ * (e.g. Arch Linux's) no longer declare or export the ENGINE_* symbols
+ * this file used for the pkcs11: cert-source path. That path isn't used
+ * for normal PEM-based module/kernel signing, so build it out entirely
+ * when compiling against such an OpenSSL rather than failing the link.
  */
+#if OPENSSL_VERSION_NUMBER < 0x30000000L
+#define HAVE_ENGINE_SUPPORT 1
+#include <openssl/engine.h>
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#else
+#define HAVE_ENGINE_SUPPORT 0
+#endif
 
 #define PKEY_ID_PKCS7 2
 
@@ -119,6 +127,7 @@ int main(int argc, char **argv)
 		fclose(f);
 		exit(0);
 	} else if (!strncmp(cert_src, "pkcs11:", 7)) {
+#if HAVE_ENGINE_SUPPORT
 		ENGINE *e;
 		struct {
 			const char *cert_id;
@@ -141,6 +150,9 @@ int main(int argc, char **argv)
 		ENGINE_ctrl_cmd(e, "LOAD_CERT_CTRL", 0, &parms, NULL, 1);
 		ERR(!parms.cert, "Get X.509 from PKCS#11");
 		write_cert(parms.cert);
+#else
+		errx(1, "%s: pkcs11: cert source needs an OpenSSL built with ENGINE support", cert_src);
+#endif
 	} else {
 		BIO *b;
 		X509 *x509;
