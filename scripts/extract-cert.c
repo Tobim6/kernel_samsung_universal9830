@@ -24,13 +24,17 @@
 #include <openssl/opensslv.h>
 
 /*
- * OpenSSL 3.0 deprecates the ENGINE API, and newer host OpenSSL builds
- * (e.g. Arch Linux's) no longer declare or export the ENGINE_* symbols
- * this file used for the pkcs11: cert-source path. That path isn't used
- * for normal PEM-based module/kernel signing, so build it out entirely
- * when compiling against such an OpenSSL rather than failing the link.
+ * The pkcs11: cert-source path below needs OpenSSL's classic ENGINE
+ * plugin-loading API (ENGINE_by_id/ENGINE_init/ENGINE_ctrl_cmd*), which:
+ *  - OpenSSL 3.0+ deprecates and newer builds may not export, and
+ *  - BoringSSL (used by Android's prebuilts/kernel-build-tools host
+ *    libcrypto) never implemented at all -- its own <openssl/engine.h>
+ *    only has a small, unrelated ENGINE_new/ENGINE_free-style API.
+ * That pkcs11: path isn't used for normal PEM-based module/kernel
+ * signing, so build it out entirely against either of those rather
+ * than failing the link.
  */
-#if OPENSSL_VERSION_NUMBER < 0x30000000L
+#if !defined(OPENSSL_IS_BORINGSSL) && OPENSSL_VERSION_NUMBER < 0x30000000L
 #define HAVE_ENGINE_SUPPORT 1
 #include <openssl/engine.h>
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
